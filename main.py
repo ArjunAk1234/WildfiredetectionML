@@ -41,6 +41,10 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 import warnings
+from flask import Flask, request, jsonify, send_file
+import io
+import tempfile
+from werkzeug.utils import secure_filename
 warnings.filterwarnings('ignore')
 
 # Set style for plots
@@ -618,39 +622,149 @@ class WildfirePredictor:
         elif probability < self.extreme_threshold: return 'High'
         else: return 'Extreme'
 
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Global predictor instance
+predictor = None
+@app.route('/train', methods=['POST'])
+def train_model():
+    """Train the model with uploaded CSV file"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Save uploaded file temporarily
+        filename = secure_filename(file.filename)
+        temp_path = os.path.join(tempfile.gettempdir(), filename)
+        file.save(temp_path)
+        
+        # Train the model
+        project = WildfireMLProject()
+        project.run_full_project(temp_path)
+        
+        # Clean up
+        os.remove(temp_path)
+        
+        return jsonify({'message': 'Model trained successfully'}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+@app.route('/predict', methods=['POST'])
+def predict():
+    """Predict wildfire risk for uploaded CSV file"""
+    global predictor
+    
+    try:
+        # Initialize predictor if not already done
+        if predictor is None:
+            predictor = WildfirePredictor(model_path="wildfire_pipeline.joblib")
+            if predictor.classification_model is None:
+                return jsonify({'error': 'Model not found. Please train the model first.'}), 400
+        
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        area_name = request.form.get('area_name', 'Unknown Area')
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Save uploaded file temporarily
+        filename = secure_filename(file.filename)
+        temp_path = os.path.join(tempfile.gettempdir(), filename)
+        file.save(temp_path)
+        
+        # Capture prediction output
+        import sys
+        from io import StringIO
+        
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = StringIO()
+        
+        # Run prediction
+        predictor.predict_area_risk(temp_path, area_name)
+        
+        # Restore stdout and get output
+        sys.stdout = old_stdout
+        prediction_result = captured_output.getvalue()
+        
+        # Clean up
+        os.remove(temp_path)
+        
+        return jsonify({
+            'area_name': area_name,
+            'prediction': prediction_result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy'}), 200
+
+@app.route('/', methods=['GET'])
+def home():
+    """Home endpoint with API instructions"""
+    return jsonify({
+        'message': 'Wildfire Prediction API',
+        'endpoints': {
+            '/train': 'POST - Upload CSV to train model',
+            '/predict': 'POST - Upload CSV to get predictions',
+            '/health': 'GET - Health check'
+        }
+    }), 200
 
 if __name__ == "__main__":
-    # --- Step 1: Run the full analysis and training pipeline ---
-    training_file_path = 'forestfires3.csv'
-    if not os.path.exists(training_file_path):
-        print(f"FATAL ERROR: Training file '{training_file_path}' not found. Cannot proceed.")
+    # For local development, you can still run the full pipeline
+    if len(sys.argv) > 1 and sys.argv[1] == 'local':
+        training_file_path = 'forestfires3.csv'
+        if os.path.exists(training_file_path):
+            project = WildfireMLProject()
+            project.run_full_project(training_file_path)
     else:
-        project = WildfireMLProject()
-        project.run_full_project(training_file_path)
+        # Run Flask app
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port, debug=False)
+# if __name__ == "__main__":
+#     # --- Step 1: Run the full analysis and training pipeline ---
+#     training_file_path = 'forestfires3.csv'
+#     if not os.path.exists(training_file_path):
+#         print(f"FATAL ERROR: Training file '{training_file_path}' not found. Cannot proceed.")
+#     else:
+#         project = WildfireMLProject()
+#         project.run_full_project(training_file_path)
 
-        # --- Step 2: Demonstrate the production-ready prediction pipeline ---
-        print("\n" + "="*60)
-        print("DEMONSTRATING AREA-WIDE PREDICTION PIPELINE")
-        print("="*60)
+#         # --- Step 2: Demonstrate the production-ready prediction pipeline ---
+#         print("\n" + "="*60)
+#         print("DEMONSTRATING AREA-WIDE PREDICTION PIPELINE")
+#         print("="*60)
         
-        # --- User must provide these files for prediction ---
-        prediction_file_1 = 'forestfirespre3.csv'
-        prediction_file_2 = 'forestfirespre5.csv'
+#         # --- User must provide these files for prediction ---
+#         prediction_file_1 = 'forestfirespre3.csv'
+#         prediction_file_2 = 'forestfirespre5.csv'
 
-        predictor = WildfirePredictor(model_path="wildfire_pipeline.joblib")
-        if predictor.classification_model:
-            # Predict for the first area
-            if os.path.exists(prediction_file_1):
-                predictor.predict_area_risk(prediction_file_1, area_name="Area 1")
-            else:
-                print(f"\nWARNING: Prediction file '{prediction_file_1}' not found. Skipping assessment for Area 1.")
-                print("Please create this file with data to test the predictor.")
+#         predictor = WildfirePredictor(model_path="wildfire_pipeline.joblib")
+#         if predictor.classification_model:
+#             # Predict for the first area
+#             if os.path.exists(prediction_file_1):
+#                 predictor.predict_area_risk(prediction_file_1, area_name="Area 1")
+#             else:
+#                 print(f"\nWARNING: Prediction file '{prediction_file_1}' not found. Skipping assessment for Area 1.")
+#                 print("Please create this file with data to test the predictor.")
 
-            # Predict for the second area
-            if os.path.exists(prediction_file_2):
-                predictor.predict_area_risk(prediction_file_2, area_name="Area 2")
-            else:
-                print(f"\nWARNING: Prediction file '{prediction_file_2}' not found. Skipping assessment for Area 2.")
-                print("Please create this file with data to test the predictor.")
-        else:
-            print("\nPrediction failed because the predictor could not be initialized.")
+#             # Predict for the second area
+#             if os.path.exists(prediction_file_2):
+#                 predictor.predict_area_risk(prediction_file_2, area_name="Area 2")
+#             else:
+#                 print(f"\nWARNING: Prediction file '{prediction_file_2}' not found. Skipping assessment for Area 2.")
+#                 print("Please create this file with data to test the predictor.")
+#         else:
+#             print("\nPrediction failed because the predictor could not be initialized.")
