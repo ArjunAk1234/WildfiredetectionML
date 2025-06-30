@@ -617,6 +617,19 @@ class WildfirePredictor:
                 print("  This area shows a MODERATE potential for wildfire. While not consistently at high risk, there are periods where conditions can become dangerous.")
         
         print("="*60)
+         result = {
+            "area_name": area_name,
+            "average_risk_probability": f"{avg_risk_prob:.2%}",
+            "peak_risk_probability": f"{max_risk_prob:.2%}",
+            "monthly_risk": monthly_risk.to_dict() if not monthly_risk.empty else {},
+            "conclusion": "safe" if (not monthly_risk.empty and monthly_risk.max() < self.moderate_threshold) else "risky"
+        }
+        
+        # Keep your existing print statements for logging
+        print("\n" + "="*20 + f" RISK ASSESSMENT FOR {area_name.upper()} " + "="*20)
+        # ... rest of your print statements ...
+        
+        return result
 
     def _categorize_risk(self, probability):
         """Assigns a risk category based on the fixed probability score."""
