@@ -9,4 +9,4 @@ lightgbm
 tensorflow
 kneed
 flask
-werkzeug
+flask-cors
