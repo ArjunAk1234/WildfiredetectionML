@@ -723,16 +723,8 @@ def home():
     }), 200
 
 if __name__ == "__main__":
-    # For local development, you can still run the full pipeline
-    if len(sys.argv) > 1 and sys.argv[1] == 'local':
-        training_file_path = 'forestfires3.csv'
-        if os.path.exists(training_file_path):
-            project = WildfireMLProject()
-            project.run_full_project(training_file_path)
-    else:
-        # Run Flask app
-        port = int(os.environ.get('PORT', 8080))
-        app.run(host='0.0.0.0', port=port, debug=False)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
 # if __name__ == "__main__":
 #     # --- Step 1: Run the full analysis and training pipeline ---
 #     training_file_path = 'forestfires3.csv'
