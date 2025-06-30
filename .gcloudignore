@@ -1,8 +1,6 @@
-.git
-.pytest_cache
 __pycache__
 *.pyc
-.env
-.venv
-*.csv
-wildfire_pipeline.joblib
+*.pyo
+*.pyd
+.git
+.gitignore
