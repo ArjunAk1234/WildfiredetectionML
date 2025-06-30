@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 
 # Import your existing classes
-from app import WildfireMLProject, WildfirePredictor
+from fire import WildfireMLProject, WildfirePredictor
 
 app = Flask(__name__)
 
