@@ -45,12 +45,15 @@ from flask import Flask, request, jsonify, send_file
 import io
 import tempfile
 from werkzeug.utils import secure_filename
+from flask_cors import CORS
 warnings.filterwarnings('ignore')
 
 # Set style for plots
 plt.style.use('seaborn-v0_8-whitegrid')
 sns.set_palette("husl")
 
+app = Flask(__name__)
+CORS(app)
 class WildfireMLProject:
     def __init__(self):
         self.data = None
@@ -622,109 +625,79 @@ class WildfirePredictor:
         elif probability < self.extreme_threshold: return 'High'
         else: return 'Extreme'
 
-app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-# Global predictor instance
-predictor = None
+@app.route("/")
+def home():
+    return "Wildfire detection ML API is running!"
+
+
 @app.route('/train', methods=['POST'])
 def train_model():
     """Train the model with uploaded CSV file"""
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
         file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
         
         # Save uploaded file temporarily
-        filename = secure_filename(file.filename)
-        temp_path = os.path.join(tempfile.gettempdir(), filename)
-        file.save(temp_path)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+            file.save(tmp_file.name)
+            training_file_path = tmp_file.name
         
-        # Train the model
+        # Run your existing training pipeline
         project = WildfireMLProject()
-        project.run_full_project(temp_path)
+        project.run_full_project(training_file_path)
         
-        # Clean up
-        os.remove(temp_path)
+        # Clean up temp file
+        os.unlink(training_file_path)
         
-        return jsonify({'message': 'Model trained successfully'}), 200
-        
+        return jsonify({"status": "success", "message": "Model trained successfully"})
+    
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/predict', methods=['POST'])
 def predict():
     """Predict wildfire risk for uploaded CSV file"""
-    global predictor
-    
     try:
-        # Initialize predictor if not already done
-        if predictor is None:
-            predictor = WildfirePredictor(model_path="wildfire_pipeline.joblib")
-            if predictor.classification_model is None:
-                return jsonify({'error': 'Model not found. Please train the model first.'}), 400
-        
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file uploaded'}), 400
-        
         file = request.files['file']
         area_name = request.form.get('area_name', 'Unknown Area')
         
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
-        
         # Save uploaded file temporarily
-        filename = secure_filename(file.filename)
-        temp_path = os.path.join(tempfile.gettempdir(), filename)
-        file.save(temp_path)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+            file.save(tmp_file.name)
+            prediction_file_path = tmp_file.name
         
-        # Capture prediction output
-        import sys
-        from io import StringIO
+        # Use your existing predictor
+        predictor = WildfirePredictor(model_path="wildfire_pipeline.joblib")
         
-        old_stdout = sys.stdout
-        sys.stdout = captured_output = StringIO()
+        # Capture the prediction output
+        import io
+        from contextlib import redirect_stdout
         
-        # Run prediction
-        predictor.predict_area_risk(temp_path, area_name)
+        output_buffer = io.StringIO()
+        with redirect_stdout(output_buffer):
+            predictor.predict_area_risk(prediction_file_path, area_name)
         
-        # Restore stdout and get output
-        sys.stdout = old_stdout
-        prediction_result = captured_output.getvalue()
+        prediction_result = output_buffer.getvalue()
         
-        # Clean up
-        os.remove(temp_path)
+        # Clean up temp file
+        os.unlink(prediction_file_path)
         
         return jsonify({
-            'area_name': area_name,
-            'prediction': prediction_result
-        }), 200
-        
+            "status": "success", 
+            "area_name": area_name,
+            "prediction": prediction_result
+        })
+    
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({'status': 'healthy'}), 200
-
-@app.route('/', methods=['GET'])
-def home():
-    """Home endpoint with API instructions"""
-    return jsonify({
-        'message': 'Wildfire Prediction API',
-        'endpoints': {
-            '/train': 'POST - Upload CSV to train model',
-            '/predict': 'POST - Upload CSV to get predictions',
-            '/health': 'GET - Health check'
-        }
-    }), 200
+    return jsonify({"status": "healthy"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 # if __name__ == "__main__":
 #     # --- Step 1: Run the full analysis and training pipeline ---
 #     training_file_path = 'forestfires3.csv'
