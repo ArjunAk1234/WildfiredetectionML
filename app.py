@@ -545,16 +545,108 @@ class WildfirePredictor:
             print(f"An error occurred while loading the model: {e}")
             self.classification_model = None
 
+    # def predict_area_risk(self, prediction_filepath, area_name):
+    #     """Analyzes an entire file representing an area to provide a holistic risk assessment."""
+    #     if self.classification_model is None:
+    #         print(f"Model not loaded. Cannot make predictions for {area_name}.")
+    #         return
+        
+    #     try:
+    #         new_data_df = pd.read_csv(prediction_filepath)
+    #     except FileNotFoundError:
+    #         print(f"Error: Prediction file '{prediction_filepath}' not found for {area_name}."); return
+        
+    #     # --- Preprocessing for Classification ---
+    #     new_data_df['month'] = pd.Categorical(new_data_df['month'], categories=self.month_categories, ordered=True)
+    #     new_data_df['day'] = pd.Categorical(new_data_df['day'], categories=self.day_categories, ordered=True)
+        
+    #     new_data_df['month_encoded'] = new_data_df['month'].cat.codes
+    #     new_data_df['day_encoded'] = new_data_df['day'].cat.codes
+    #     new_data_df['temp_rh_interaction'] = new_data_df['temp'] * new_data_df['RH']
+    #     new_data_df['wind_temp_interaction'] = new_data_df['wind'] * new_data_df['temp']
+    #     new_data_df['fire_weather_index'] = (new_data_df['FFMC'] + new_data_df['DMC'] + new_data_df['DC'] + new_data_df['ISI']) / 4
+
+    #     # --- Rule-Based Override for Physically Impossible Conditions ---
+    #     # Define conditions where fire is highly improbable
+    #     no_go_mask = (new_data_df['temp'] < 5.0) | (new_data_df['rain'] > 0.1)
+    #     go_mask = ~no_go_mask
+        
+    #     # Initialize probabilities array with zeros
+    #     probabilities = np.zeros(len(new_data_df))
+
+    #     # Only predict on data that passes the rule-based check
+    #     if go_mask.any():
+    #         df_to_predict = new_data_df[go_mask]
+            
+    #         df_processed_cls = df_to_predict.reindex(columns=self.feature_names, fill_value=0)
+    #         X_scaled_cls = self.scaler.transform(df_processed_cls)
+    #         X_pca_cls = self.pca.transform(X_scaled_cls)
+            
+    #         model_probs = self.classification_model.predict_proba(X_pca_cls)[:, 1]
+    #         probabilities[go_mask] = model_probs
+        
+    #     new_data_df['probability'] = probabilities
+        
+    #     # --- Holistic Area Analysis ---
+    #     avg_risk_prob = new_data_df['probability'].mean()
+    #     max_risk_prob = new_data_df['probability'].max()
+        
+    #     monthly_risk = new_data_df.groupby('month')['probability'].mean().sort_values(ascending=False)
+        
+    #     print("\n" + "="*20 + f" RISK ASSESSMENT FOR {area_name.upper()} " + "="*20)
+        
+    #     print(f"\n> Average Fire Risk Probability: {avg_risk_prob:.2%}")
+    #     print(f"> Peak Fire Risk Probability Found: {max_risk_prob:.2%}")
+
+    #     # --- REFINED MONTHLY AND OVERALL CONCLUSION LOGIC ---
+    #     if not monthly_risk.empty and monthly_risk.max() < self.moderate_threshold:
+    #         print("\n> Overall Conclusion:")
+    #         print("  This area is considered safe. The conditions across all analyzed months show no significant chance of wildfire.")
+        
+    #     else:
+    #         print("\n> Monthly Risk Profile:")
+    #         if not monthly_risk.empty:
+    #              print("  - Highest risk months:", ", ".join(monthly_risk.head(2).index.str.capitalize()))
+    #         else:
+    #             print("  - No monthly data available to analyze.")
+            
+    #         print("\n> Overall Conclusion:")
+    #         if avg_risk_prob > self.high_threshold or max_risk_prob > self.extreme_threshold:
+    #             print("  This area exhibits a HIGH potential for wildfire. Conditions are frequently favorable for fire starts and spread, especially in peak months.")
+    #         else:
+    #             print("  This area shows a MODERATE potential for wildfire. While not consistently at high risk, there are periods where conditions can become dangerous.")
+        
+    #     print("="*60)
+    #      result = {
+    #         "area_name": area_name,
+    #         "average_risk_probability": f"{avg_risk_prob:.2%}",
+    #         "peak_risk_probability": f"{max_risk_prob:.2%}",
+    #         "monthly_risk": monthly_risk.to_dict() if not monthly_risk.empty else {},
+    #         "conclusion": "safe" if (not monthly_risk.empty and monthly_risk.max() < self.moderate_threshold) else "risky"
+    #     }
+        
+    #     # Keep your existing print statements for logging
+    #     print("\n" + "="*20 + f" RISK ASSESSMENT FOR {area_name.upper()} " + "="*20)
+    #     # ... rest of your print statements ...
+        
+    #     return result
     def predict_area_risk(self, prediction_filepath, area_name):
         """Analyzes an entire file representing an area to provide a holistic risk assessment."""
         if self.classification_model is None:
-            print(f"Model not loaded. Cannot make predictions for {area_name}.")
-            return
+            error_msg = f"Model not loaded. Cannot make predictions for {area_name}."
+            print(error_msg)
+            return {"error": error_msg}
         
         try:
             new_data_df = pd.read_csv(prediction_filepath)
         except FileNotFoundError:
-            print(f"Error: Prediction file '{prediction_filepath}' not found for {area_name}."); return
+            error_msg = f"Error: Prediction file '{prediction_filepath}' not found for {area_name}."
+            print(error_msg)
+            return {"error": error_msg}
+        except Exception as e:
+            error_msg = f"Error reading CSV file: {str(e)}"
+            print(error_msg)
+            return {"error": error_msg}
         
         # --- Preprocessing for Classification ---
         new_data_df['month'] = pd.Categorical(new_data_df['month'], categories=self.month_categories, ordered=True)
@@ -565,7 +657,7 @@ class WildfirePredictor:
         new_data_df['temp_rh_interaction'] = new_data_df['temp'] * new_data_df['RH']
         new_data_df['wind_temp_interaction'] = new_data_df['wind'] * new_data_df['temp']
         new_data_df['fire_weather_index'] = (new_data_df['FFMC'] + new_data_df['DMC'] + new_data_df['DC'] + new_data_df['ISI']) / 4
-
+    
         # --- Rule-Based Override for Physically Impossible Conditions ---
         # Define conditions where fire is highly improbable
         no_go_mask = (new_data_df['temp'] < 5.0) | (new_data_df['rain'] > 0.1)
@@ -573,7 +665,7 @@ class WildfirePredictor:
         
         # Initialize probabilities array with zeros
         probabilities = np.zeros(len(new_data_df))
-
+    
         # Only predict on data that passes the rule-based check
         if go_mask.any():
             df_to_predict = new_data_df[go_mask]
@@ -593,41 +685,55 @@ class WildfirePredictor:
         
         monthly_risk = new_data_df.groupby('month')['probability'].mean().sort_values(ascending=False)
         
-        print("\n" + "="*20 + f" RISK ASSESSMENT FOR {area_name.upper()} " + "="*20)
-        
-        print(f"\n> Average Fire Risk Probability: {avg_risk_prob:.2%}")
-        print(f"> Peak Fire Risk Probability Found: {max_risk_prob:.2%}")
-
-        # --- REFINED MONTHLY AND OVERALL CONCLUSION LOGIC ---
+        # Determine overall risk level
         if not monthly_risk.empty and monthly_risk.max() < self.moderate_threshold:
-            print("\n> Overall Conclusion:")
-            print("  This area is considered safe. The conditions across all analyzed months show no significant chance of wildfire.")
-        
+            risk_level = "LOW"
+            conclusion = "This area is considered safe. The conditions across all analyzed months show no significant chance of wildfire."
+        elif avg_risk_prob > self.high_threshold or max_risk_prob > self.extreme_threshold:
+            risk_level = "HIGH"
+            conclusion = "This area exhibits a HIGH potential for wildfire. Conditions are frequently favorable for fire starts and spread, especially in peak months."
         else:
-            print("\n> Monthly Risk Profile:")
-            if not monthly_risk.empty:
-                 print("  - Highest risk months:", ", ".join(monthly_risk.head(2).index.str.capitalize()))
-            else:
-                print("  - No monthly data available to analyze.")
-            
-            print("\n> Overall Conclusion:")
-            if avg_risk_prob > self.high_threshold or max_risk_prob > self.extreme_threshold:
-                print("  This area exhibits a HIGH potential for wildfire. Conditions are frequently favorable for fire starts and spread, especially in peak months.")
-            else:
-                print("  This area shows a MODERATE potential for wildfire. While not consistently at high risk, there are periods where conditions can become dangerous.")
+            risk_level = "MODERATE"
+            conclusion = "This area shows a MODERATE potential for wildfire. While not consistently at high risk, there are periods where conditions can become dangerous."
         
-        print("="*60)
-         result = {
+        # Get highest risk months
+        highest_risk_months = monthly_risk.head(2).index.str.capitalize().tolist() if not monthly_risk.empty else []
+        
+        # Create structured result
+        result = {
+            "status": "success",
             "area_name": area_name,
-            "average_risk_probability": f"{avg_risk_prob:.2%}",
-            "peak_risk_probability": f"{max_risk_prob:.2%}",
-            "monthly_risk": monthly_risk.to_dict() if not monthly_risk.empty else {},
-            "conclusion": "safe" if (not monthly_risk.empty and monthly_risk.max() < self.moderate_threshold) else "risky"
+            "risk_level": risk_level,
+            "average_risk_probability": round(avg_risk_prob, 4),
+            "average_risk_percentage": f"{avg_risk_prob:.2%}",
+            "peak_risk_probability": round(max_risk_prob, 4),
+            "peak_risk_percentage": f"{max_risk_prob:.2%}",
+            "highest_risk_months": highest_risk_months,
+            "monthly_risk_data": monthly_risk.round(4).to_dict() if not monthly_risk.empty else {},
+            "conclusion": conclusion,
+            "total_data_points": len(new_data_df),
+            "safe_conditions_count": int(no_go_mask.sum()),
+            "risky_conditions_count": int(go_mask.sum())
         }
         
-        # Keep your existing print statements for logging
+        # Print detailed analysis (for console output)
         print("\n" + "="*20 + f" RISK ASSESSMENT FOR {area_name.upper()} " + "="*20)
-        # ... rest of your print statements ...
+        print(f"\n> Average Fire Risk Probability: {avg_risk_prob:.2%}")
+        print(f"> Peak Fire Risk Probability Found: {max_risk_prob:.2%}")
+        print(f"> Risk Level: {risk_level}")
+        
+        if highest_risk_months:
+            print(f"\n> Monthly Risk Profile:")
+            print(f"  - Highest risk months: {', '.join(highest_risk_months)}")
+        
+        print(f"\n> Data Summary:")
+        print(f"  - Total data points analyzed: {len(new_data_df)}")
+        print(f"  - Safe conditions (low temp/rain): {int(no_go_mask.sum())}")
+        print(f"  - Conditions requiring model prediction: {int(go_mask.sum())}")
+        
+        print(f"\n> Overall Conclusion:")
+        print(f"  {conclusion}")
+        print("="*60)
         
         return result
 
