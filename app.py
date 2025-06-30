@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from paste import WildfireMLProject  # Import your class
+from main import WildfireMLProject  # Import your class
 import os
 
 app = Flask(__name__)
